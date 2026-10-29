@@ -13,6 +13,7 @@ public class PrototypeBootstrap : MonoBehaviour
     Camera gameCamera;
     Texture2D heroTexture, groundTexture, starTexture, cloudTexture;
     float moveInput;
+    float touchMoveInput;
     bool jumpQueued;
     int stars;
     bool finished;
@@ -176,7 +177,8 @@ public class PrototypeBootstrap : MonoBehaviour
     {
         if (hero == null || body == null) return;
         if (Input.GetKeyDown(KeyCode.R)) Restart();
-        moveInput = Input.GetAxisRaw("Horizontal");
+        float keyboardInput = Input.GetAxisRaw("Horizontal");
+        moveInput = Mathf.Abs(touchMoveInput) > 0.1f ? touchMoveInput : keyboardInput;
         if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow))
             jumpQueued = true;
 
@@ -238,8 +240,9 @@ public class PrototypeBootstrap : MonoBehaviour
 
         float size = Mathf.Clamp(Screen.height * 0.14f, 64, 110);
         float y = Screen.height - size - 22;
-        if (GUI.RepeatButton(new Rect(22, y, size, size), "◀", buttonStyle)) moveInput = -1;
-        if (GUI.RepeatButton(new Rect(30 + size, y, size, size), "▶", buttonStyle)) moveInput = 1;
+        touchMoveInput = 0;
+        if (GUI.RepeatButton(new Rect(22, y, size, size), "◀", buttonStyle)) touchMoveInput = -1;
+        if (GUI.RepeatButton(new Rect(30 + size, y, size, size), "▶", buttonStyle)) touchMoveInput = 1;
         if (GUI.Button(new Rect(Screen.width - size - 24, y, size, size), "JUMP", buttonStyle)) jumpQueued = true;
         if (GUI.Button(new Rect(Screen.width - 70, 16, 52, 44), "↻", buttonStyle)) Restart();
     }
