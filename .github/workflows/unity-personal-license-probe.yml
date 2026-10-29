@@ -10,20 +10,59 @@ permissions:
   contents: read
 
 jobs:
-  request-activation-file:
-    name: Test cloud activation request generation
+  check-personal-license:
+    name: Check Unity Personal licensing and build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      - name: Request Unity activation file
-        id: activation
-        uses: game-ci/unity-request-activation-file@v2
+      - name: Check required GitHub secrets without exposing values
+        id: secrets
+        shell: bash
+        env:
+          HAS_UNITY_LICENSE: ${{ secrets.UNITY_LICENSE != '' }}
+          HAS_UNITY_EMAIL: ${{ secrets.UNITY_EMAIL != '' }}
+          HAS_UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD != '' }}
+        run: |
+          missing=0
+          for name in UNITY_LICENSE UNITY_EMAIL UNITY_PASSWORD; do
+            var="HAS_${name}"
+            if [[ "${!var}" != "true" ]]; then
+              echo "::error::Missing GitHub Actions secret: ${name}"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            {
+              echo "## Unity Personal license test"
+              echo
+              echo "The build did not start because one or more required repository secrets are missing."
+              echo "Add UNITY_LICENSE, UNITY_EMAIL, and UNITY_PASSWORD under Settings → Secrets and variables → Actions."
+              echo "Important: Unity's official documentation says Unity Personal must be activated through Unity Hub and does not support manual license activation. GameCI's documentation still describes the .ulf-secret workflow, so compatibility must be tested rather than assumed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "All three required secrets are present (values were not printed)."
 
-      - name: Upload activation request
+      - name: Build Android APK using current GameCI builder
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: Android
+          allowDirtyBuild: false
+
+      - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Unity-Activation-Request
-          path: ${{ steps.activation.outputs.filePath }}
+          name: Platformer-Game-Pixel-Android-APK
+          path: build/Android/**/*.apk
+          if-no-files-found: error
           retention-days: 7
