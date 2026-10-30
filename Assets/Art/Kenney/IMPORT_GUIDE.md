@@ -1,32 +1,42 @@
 # Kenney asset setup
 
-The original Kenney archives have been extracted under this folder. Their original license files are kept beside the source art.
+The original Kenney archives are extracted under this folder. Their original license files are kept beside the source art.
+
+## Imported assets
+
+- **Platformer Art Extended Tileset** supplies the grass environment tiles.
+- **Platformer Characters** supplies the Adventurer poses and animation frames.
+- The Unity editor utility creates Tile assets, animation clips, Animator Controllers and reusable character prefabs under `Generated/`.
+
+Both packs include a CC0 license. The original license files remain in their source folders.
 
 ## Unity setup
 
 1. Open the project with Unity **6000.6.7f1** and let the first import finish.
 2. Wait for Unity to compile the editor utility.
-3. In the Unity menu, choose **Tools → Kenney → Configure Imported Assets**.
-4. Wait for the setup to finish. Check the Console for the completion message or any import errors.
+3. If generated assets are missing, choose **Tools → Kenney → Configure Imported Assets**.
+4. Open `Assets/Scenes/Prototype.unity` and press **Play**.
 
-The editor utility is at `Assets/Editor/KenneyAssetSetup.cs`.
+## Prototype integration
 
-## What it configures
+The Prototype scene now references the generated **Adventurer prefab** and the Grass **left, middle and right Tile assets**. The gameplay script builds the level layout with a Tilemap, instantiates the imported Adventurer and drives the imported Animator Controller with `MoveSpeed`, `Grounded` and `VerticalVelocity`.
 
-- Sprite texture type for the Kenney PNGs.
-- Point filtering, no mipmaps, uncompressed textures, clamp wrapping and transparent-pixel handling.
-- 70 pixels per unit for the 70×70 environment tiles and 18 pixels per unit for the character pack.
-- Multiple-sprite slicing for each environment `sheet.png`, using its matching `sheet.xml` atlas coordinates.
-- Reusable Unity `Tile` assets for individual environment PNGs and sliced atlas sprites.
-- Character animation clips from the supplied individual pose PNGs. Numbered frames such as `walk1` and `walk2` are grouped into one looping clip.
-- Animator Controllers with basic idle/walk/jump/fall/hurt transitions and trigger-driven optional poses.
-- Reusable character prefabs with SpriteRenderer, Animator, Rigidbody2D and CapsuleCollider2D.
+The character and terrain visuals are source Kenney assets. The gameplay script does not create textures or draw replacement character/terrain art. The small collectible and goal labels are text glyphs.
 
-Generated Unity assets are placed in `Assets/Art/Kenney/Generated/`.
+## Controls
 
-## Important
+- **Move:** A/D or ←/→
+- **Jump:** Space, W or ↑
+- **Restart:** R
+- **Touch:** Hold ◀ / ▶ to move and tap **JUMP**.
 
-- The original PNGs, XML files and license files are not modified.
-- The character prefabs are reusable starting points. The game controller still needs to set Animator parameters such as `MoveSpeed`, `Grounded`, `VerticalVelocity` and the optional pose triggers.
-- The tool does not rewrite the prototype scene or replace its gameplay script. Review the generated prefabs and tile assets in Unity before wiring them into a level.
-- Unity Editor execution is required to generate Unity's imported sprite metadata, animation clips, controllers, prefabs and Tile assets. These generated files are created locally by the menu command and should be committed from the Unity project after reviewing them.
+## Attribution and license
+
+- Platformer Art Extended Tileset by Kenney (Kenney.nl), CC0.
+- Platformer Characters by Kenney (Kenney.nl), CC0.
+- Attribution is optional under CC0, but credit is retained here as a courtesy.
+
+## Notes
+
+- The generated assets and original source art should stay committed together so Unity references remain valid.
+- The scene and script references are configured in GitHub. Unity Editor compilation and actual gameplay still need to be verified locally.
