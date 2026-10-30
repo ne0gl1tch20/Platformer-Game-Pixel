@@ -11,9 +11,6 @@ on:
         options:
           - request-activation
           - build
-  push:
-    paths:
-      - ".github/workflows/unity-personal-license-probe.yml"
 
 permissions:
   contents: read
@@ -51,7 +48,7 @@ jobs:
 
   check-personal-license:
     name: Check Unity Personal licensing and build Android APK
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.task == 'build')
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'build'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
