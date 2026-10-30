@@ -35,19 +35,47 @@ public sealed class PrototypeBootstrap : MonoBehaviour
     private void Start()
     {
         Application.targetFrameRate = 60;
+        Debug.Log("[PrototypeBootstrap] Startup began.");
 
-        if (adventurerPrefab == null || grassLeftTile == null ||
-            grassMiddleTile == null || grassRightTile == null)
+        if (adventurerPrefab == null)
         {
-            Debug.LogError("Kenney assets are not assigned on PrototypeBootstrap. Reopen the Prototype scene and check its Inspector references.");
+            Debug.LogError("[PrototypeBootstrap] Adventurer Prefab is not assigned. The player cannot spawn.");
             enabled = false;
             return;
         }
 
-        BuildWorld();
-        BuildPickups();
-        BuildHero();
-        BuildCamera();
+        Debug.Log("[PrototypeBootstrap] Adventurer prefab reference is assigned.");
+
+        // Spawn the player before optional world setup so a terrain/pickup error
+        // cannot prevent the character from appearing in the Hierarchy.
+        RunStartupStep("Adventurer spawn", BuildHero);
+        RunStartupStep("Camera setup", BuildCamera);
+
+        if (grassLeftTile == null || grassMiddleTile == null || grassRightTile == null)
+        {
+            Debug.LogError("[PrototypeBootstrap] One or more grass Tile references are missing. Skipping environment creation; the Adventurer spawn was attempted independently.");
+        }
+        else
+        {
+            RunStartupStep("Environment creation", BuildWorld);
+        }
+
+        RunStartupStep("Pickup creation", BuildPickups);
+        Debug.Log("[PrototypeBootstrap] Startup sequence finished. Check earlier errors for any skipped step.");
+    }
+
+    private static void RunStartupStep(string stepName, System.Action action)
+    {
+        Debug.Log("[PrototypeBootstrap] Starting: " + stepName + ".");
+        try
+        {
+            action();
+            Debug.Log("[PrototypeBootstrap] Completed: " + stepName + ".");
+        }
+        catch (System.Exception exception)
+        {
+            Debug.LogError("[PrototypeBootstrap] Failed during " + stepName + ": " + exception);
+        }
     }
 
     private void BuildWorld()
