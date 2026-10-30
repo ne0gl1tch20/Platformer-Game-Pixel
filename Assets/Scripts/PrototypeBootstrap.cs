@@ -1,249 +1,294 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 /// <summary>
-/// One-file, dependency-free first playable slice. Add this component to an empty GameObject and press Play.
-/// All prototype art is generated as tiny point-filtered textures at runtime.
+/// Playable platformer prototype using the imported Kenney Adventurer prefab and Grass tiles.
+/// Gameplay objects are created here, but all character and terrain artwork comes from source assets.
 /// </summary>
-public class PrototypeBootstrap : MonoBehaviour
+public sealed class PrototypeBootstrap : MonoBehaviour
 {
-    const float MoveSpeed = 5.2f;
-    const float JumpForce = 10.5f;
-    Rigidbody2D body;
-    Transform hero;
-    Camera gameCamera;
-    Texture2D heroTexture, groundTexture, starTexture, cloudTexture;
-    float moveInput;
-    float touchMoveInput;
-    bool jumpQueued;
-    int stars;
-    bool finished;
-    Vector2 spawnPoint = new Vector2(-6f, -0.3f);
-    GUIStyle hudStyle, buttonStyle;
+    private const float MoveSpeed = 5.2f;
+    private const float JumpForce = 8.6f;
+    private const int TotalStars = 6;
 
-    void Start()
+    [Header("Kenney assets")]
+    [SerializeField] private GameObject adventurerPrefab;
+    [SerializeField] private TileBase grassLeftTile;
+    [SerializeField] private TileBase grassMiddleTile;
+    [SerializeField] private TileBase grassRightTile;
+
+    private readonly List<Transform> pickups = new List<Transform>();
+    private Rigidbody2D body;
+    private Transform hero;
+    private Animator animator;
+    private Camera gameCamera;
+    private float moveInput;
+    private float touchMoveInput;
+    private bool jumpQueued;
+    private int stars;
+    private bool finished;
+    private Vector2 spawnPoint = new Vector2(-6f, -0.35f);
+    private GUIStyle hudStyle;
+    private GUIStyle buttonStyle;
+
+    private void Start()
     {
         Application.targetFrameRate = 60;
-        BuildArt();
+
+        if (adventurerPrefab == null || grassLeftTile == null ||
+            grassMiddleTile == null || grassRightTile == null)
+        {
+            Debug.LogError("Kenney assets are not assigned on PrototypeBootstrap. Reopen the Prototype scene and check its Inspector references.");
+            enabled = false;
+            return;
+        }
+
         BuildWorld();
+        BuildPickups();
         BuildHero();
         BuildCamera();
     }
 
-    void BuildArt()
+    private void BuildWorld()
     {
-        heroTexture = NewTexture(16, 20, new Color32(0,0,0,0));
-        Rect(heroTexture, 3, 13, 10, 5, new Color32(235,75,105,255)); // cap
-        Rect(heroTexture, 5, 10, 8, 5, new Color32(255,205,145,255)); // face
-        Rect(heroTexture, 4, 8, 9, 3, new Color32(70,145,235,255)); // shirt
-        Rect(heroTexture, 3, 2, 4, 6, new Color32(55,65,105,255)); // left leg
-        Rect(heroTexture, 9, 2, 4, 6, new Color32(55,65,105,255)); // right leg
-        Rect(heroTexture, 10, 12, 1, 1, Color.black); // eye
-        Rect(heroTexture, 1, 14, 7, 2, new Color32(235,75,105,255));
-        heroTexture.Apply();
+        GameObject gridObject = new GameObject("Kenney Environment Grid");
+        Grid grid = gridObject.AddComponent<Grid>();
+        grid.cellSize = Vector3.one;
 
-        groundTexture = NewTexture(16, 16, new Color32(126,78,55,255));
-        Rect(groundTexture, 0, 12, 16, 4, new Color32(93,195,91,255));
-        Rect(groundTexture, 0, 12, 16, 1, new Color32(166,231,105,255));
-        for (int x = 2; x < 16; x += 5) Rect(groundTexture, x, 4, 2, 2, new Color32(153,100,67,255));
-        groundTexture.Apply();
+        GameObject tilemapObject = new GameObject("Kenney Grass Tilemap");
+        tilemapObject.transform.SetParent(gridObject.transform, false);
+        Tilemap tilemap = tilemapObject.AddComponent<Tilemap>();
+        TilemapRenderer tilemapRenderer = tilemapObject.AddComponent<TilemapRenderer>();
+        tilemapRenderer.sortingOrder = 0;
+        TilemapCollider2D tilemapCollider = tilemapObject.AddComponent<TilemapCollider2D>();
+        tilemapCollider.usedByComposite = false;
 
-        starTexture = NewTexture(16, 16, new Color32(0,0,0,0));
-        Rect(starTexture, 7, 1, 2, 14, new Color32(255,195,45,255));
-        Rect(starTexture, 3, 4, 10, 8, new Color32(255,195,45,255));
-        Rect(starTexture, 5, 6, 6, 4, new Color32(255,239,119,255));
-        starTexture.Apply();
+        // Platform layout is gameplay data. Every visible ground tile is a Kenney Tile asset.
+        CreatePlatform(tilemap, -10, -3, -2);
+        CreatePlatform(tilemap, -1, 2, -1);
+        CreatePlatform(tilemap, 4, 7, 1);
+        CreatePlatform(tilemap, 9, 12, 0);
+        CreatePlatform(tilemap, 14, 18, 2);
+        CreatePlatform(tilemap, 20, 25, 0);
 
-        cloudTexture = NewTexture(32, 16, new Color32(0,0,0,0));
-        Rect(cloudTexture, 4, 3, 24, 8, new Color32(255,255,255,225));
-        Rect(cloudTexture, 8, 7, 8, 7, new Color32(255,255,255,225));
-        Rect(cloudTexture, 16, 9, 9, 5, new Color32(255,255,255,225));
-        cloudTexture.Apply();
+        GameObject goal = new GameObject("Goal Marker");
+        goal.transform.position = new Vector3(16f, 3.65f, 0f);
+        TextMesh goalText = goal.AddComponent<TextMesh>();
+        goalText.text = "GOAL";
+        goalText.anchor = TextAnchor.MiddleCenter;
+        goalText.alignment = TextAlignment.Center;
+        goalText.fontSize = 48;
+        goalText.characterSize = 0.12f;
+        goalText.color = new Color(1f, 0.88f, 0.35f);
+        goalText.GetComponent<MeshRenderer>().sortingOrder = 10;
     }
 
-    Texture2D NewTexture(int w, int h, Color fill)
+    private void CreatePlatform(Tilemap tilemap, int startX, int endX, int rowY)
     {
-        var t = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        t.filterMode = FilterMode.Point;
-        t.wrapMode = TextureWrapMode.Clamp;
-        var pixels = new Color[w * h];
-        for (int i = 0; i < pixels.Length; i++) pixels[i] = fill;
-        t.SetPixels(pixels);
-        return t;
-    }
-
-    void Rect(Texture2D t, int x, int y, int w, int h, Color c)
-    {
-        for (int px = x; px < x + w; px++)
-            for (int py = y; py < y + h; py++)
-                if (px >= 0 && py >= 0 && px < t.width && py < t.height) t.SetPixel(px, py, c);
-    }
-
-    Sprite MakeSprite(Texture2D texture, float pixelsPerUnit = 16f)
-    {
-        return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
-            new Vector2(0.5f, 0.5f), pixelsPerUnit);
-    }
-
-    GameObject MakeBlock(string label, Vector2 position, Vector2 size, Sprite sprite, bool solid)
-    {
-        var go = new GameObject(label);
-        go.transform.position = position;
-        go.transform.localScale = new Vector3(size.x, size.y, 1);
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = sprite;
-        if (solid) {
-            var col = go.AddComponent<BoxCollider2D>();
-            col.size = Vector2.one;
-        }
-        return go;
-    }
-
-    void BuildWorld()
-    {
-        var bg = new GameObject("Sky");
-        bg.transform.position = new Vector3(0, 0, 10);
-        var cameraBg = bg.AddComponent<Camera>();
-        cameraBg.orthographic = true;
-        cameraBg.orthographicSize = 5.5f;
-        cameraBg.clearFlags = CameraClearFlags.SolidColor;
-        cameraBg.backgroundColor = new Color32(128, 204, 255, 255);
-        cameraBg.depth = -2;
-        cameraBg.enabled = false;
-
-        var ground = MakeSprite(groundTexture);
-        MakeBlock("Starting Island", new Vector2(-6, -2), new Vector2(8, 1), ground, true);
-        MakeBlock("Low Platform", new Vector2(0, -0.5f), new Vector2(3, 0.55f), ground, true);
-        MakeBlock("High Platform", new Vector2(4, 1.2f), new Vector2(2.8f, 0.55f), ground, true);
-        MakeBlock("Landing Island", new Vector2(8.2f, 0), new Vector2(4, 0.8f), ground, true);
-        MakeBlock("Finish Island", new Vector2(13, 1.8f), new Vector2(4, 0.8f), ground, true);
-        MakeBlock("Far Island", new Vector2(18, 0.1f), new Vector2(5, 0.8f), ground, true);
-
-        for (int i = 0; i < 6; i++)
+        for (int x = startX; x <= endX; x++)
         {
-            float x = -2f + i * 3.4f;
-            var star = new GameObject("Star");
-            star.transform.position = new Vector3(x, i % 2 == 0 ? 1.0f : 2.8f, 0);
-            star.transform.localScale = Vector3.one * 0.75f;
-            star.AddComponent<SpriteRenderer>().sprite = MakeSprite(starTexture);
-        }
+            TileBase tile = x == startX
+                ? grassLeftTile
+                : x == endX
+                    ? grassRightTile
+                    : grassMiddleTile;
 
-        for (int i = 0; i < 7; i++)
-        {
-            var cloud = new GameObject("Cloud");
-            cloud.transform.position = new Vector3(-7 + i * 4.8f, 3.4f + (i % 3) * 1.0f, 2);
-            cloud.transform.localScale = Vector3.one * (1.2f + (i % 2) * 0.6f);
-            var renderer = cloud.AddComponent<SpriteRenderer>();
-            renderer.sprite = MakeSprite(cloudTexture);
-            renderer.sortingOrder = -1;
+            tilemap.SetTile(new Vector3Int(x, rowY, 0), tile);
         }
-
-        var flag = MakeBlock("Finish Flag", new Vector2(13, 3f), new Vector2(0.22f, 2.2f),
-            MakeSprite(NewTexture(4, 32, new Color32(255, 120, 120, 255))), false);
-        flag.GetComponent<SpriteRenderer>().color = new Color32(255, 125, 125, 255);
     }
 
-    void BuildHero()
+    private void BuildPickups()
     {
-        var go = new GameObject("Pixel Hero");
-        go.transform.position = spawnPoint;
-        hero = go.transform;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = MakeSprite(heroTexture);
-        sr.sortingOrder = 5;
-        body = go.AddComponent<Rigidbody2D>();
+        pickups.Clear();
+        Vector2[] positions =
+        {
+            new Vector2(-1f, 0.75f),
+            new Vector2(2f, 1.15f),
+            new Vector2(5.5f, 2.65f),
+            new Vector2(10f, 1.65f),
+            new Vector2(15f, 3.65f),
+            new Vector2(22f, 1.65f)
+        };
+
+        foreach (Vector2 position in positions)
+        {
+            GameObject pickup = new GameObject("Star Pickup");
+            pickup.transform.position = position;
+            TextMesh star = pickup.AddComponent<TextMesh>();
+            star.text = "★";
+            star.anchor = TextAnchor.MiddleCenter;
+            star.alignment = TextAlignment.Center;
+            star.fontSize = 64;
+            star.characterSize = 0.16f;
+            star.color = new Color(1f, 0.82f, 0.18f);
+            star.GetComponent<MeshRenderer>().sortingOrder = 10;
+            pickups.Add(pickup.transform);
+        }
+    }
+
+    private void BuildHero()
+    {
+        GameObject player = Instantiate(adventurerPrefab, spawnPoint, Quaternion.identity);
+        player.name = "Kenney Adventurer";
+        player.transform.localScale = Vector3.one * 0.18f;
+
+        hero = player.transform;
+        body = player.GetComponent<Rigidbody2D>();
+        animator = player.GetComponent<Animator>();
+
+        if (body == null)
+        {
+            Debug.LogError("The Adventurer prefab is missing its Rigidbody2D.");
+            enabled = false;
+            return;
+        }
+
         body.freezeRotation = true;
-        body.gravityScale = 2.8f;
+        body.gravityScale = 3f;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        var collider = go.AddComponent<BoxCollider2D>();
-        collider.size = new Vector2(0.72f, 0.92f);
     }
 
-    void BuildCamera()
+    private void BuildCamera()
     {
         gameCamera = Camera.main;
-        if (gameCamera == null) {
-            var go = new GameObject("Main Camera");
-            gameCamera = go.AddComponent<Camera>();
-            go.tag = "MainCamera";
+        if (gameCamera == null)
+        {
+            GameObject cameraObject = new GameObject("Main Camera");
+            gameCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.tag = "MainCamera";
         }
+
         gameCamera.orthographic = true;
         gameCamera.orthographicSize = 5.2f;
-        gameCamera.transform.position = new Vector3(0, 1, -10);
         gameCamera.backgroundColor = new Color32(128, 204, 255, 255);
         gameCamera.clearFlags = CameraClearFlags.SolidColor;
+        gameCamera.transform.position = new Vector3(0f, 1f, -10f);
     }
 
-    void Update()
+    private void Update()
     {
         if (hero == null || body == null) return;
+
         if (Input.GetKeyDown(KeyCode.R)) Restart();
+
         float keyboardInput = Input.GetAxisRaw("Horizontal");
         moveInput = Mathf.Abs(touchMoveInput) > 0.1f ? touchMoveInput : keyboardInput;
-        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow))
-            jumpQueued = true;
 
-        var hits = Physics2D.OverlapCircleAll(hero.position + Vector3.down * 0.55f, 0.18f);
-        bool grounded = false;
-        foreach (var hit in hits) if (hit.gameObject != hero.gameObject && hit.GetComponent<BoxCollider2D>() != null) grounded = true;
-        if (jumpQueued && grounded && !finished) body.linearVelocity = new Vector2(body.linearVelocity.x, JumpForce);
-        jumpQueued = false;
-        body.linearVelocity = new Vector2(finished ? 0 : moveInput * MoveSpeed, body.linearVelocity.y);
-
-        var sprite = hero.GetComponent<SpriteRenderer>();
-        if (Mathf.Abs(moveInput) > 0.05f) sprite.flipX = moveInput < 0;
-
-        foreach (var item in GameObject.FindGameObjectsWithTag("Untagged"))
+        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.W) ||
+            Input.GetKeyDown(KeyCode.UpArrow))
         {
-            if (item.name == "Star" && Vector2.Distance(hero.position, item.transform.position) < 0.75f) {
+            jumpQueued = true;
+        }
+
+        bool grounded = Physics2D.Raycast(body.position, Vector2.down, 0.62f).collider != null;
+        if (jumpQueued && grounded && !finished)
+        {
+            body.linearVelocity = new Vector2(body.linearVelocity.x, JumpForce);
+        }
+        jumpQueued = false;
+
+        body.linearVelocity = new Vector2(finished ? 0f : moveInput * MoveSpeed,
+            body.linearVelocity.y);
+
+        SpriteRenderer spriteRenderer = hero.GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null && Mathf.Abs(moveInput) > 0.05f)
+        {
+            spriteRenderer.flipX = moveInput < 0f;
+        }
+
+        if (animator != null)
+        {
+            animator.SetFloat("MoveSpeed", Mathf.Abs(moveInput));
+            animator.SetBool("Grounded", grounded);
+            animator.SetFloat("VerticalVelocity", body.linearVelocity.y);
+        }
+
+        for (int i = pickups.Count - 1; i >= 0; i--)
+        {
+            Transform pickup = pickups[i];
+            if (pickup == null)
+            {
+                pickups.RemoveAt(i);
+                continue;
+            }
+
+            if (Vector2.Distance(hero.position, pickup.position) < 0.8f)
+            {
                 stars++;
-                Destroy(item);
+                Destroy(pickup.gameObject);
+                pickups.RemoveAt(i);
             }
         }
 
-        if (!finished && hero.position.x > 12.2f && hero.position.y > 0.8f) {
+        if (!finished && hero.position.x > 15.4f && hero.position.y > 2f)
+        {
             finished = true;
             body.linearVelocity = Vector2.zero;
         }
+
         if (hero.position.y < -8f) Restart();
 
-        if (gameCamera != null) {
-            var target = new Vector3(hero.position.x + 2.0f, Mathf.Clamp(hero.position.y + 1.0f, 0.2f, 2.5f), -10);
-            gameCamera.transform.position = Vector3.Lerp(gameCamera.transform.position, target, Time.deltaTime * 4f);
+        if (gameCamera != null)
+        {
+            Vector3 target = new Vector3(hero.position.x + 2f,
+                Mathf.Clamp(hero.position.y + 1f, 0.2f, 3.2f), -10f);
+            gameCamera.transform.position = Vector3.Lerp(gameCamera.transform.position,
+                target, Time.deltaTime * 4f);
         }
     }
 
-    void Restart()
+    private void Restart()
     {
         stars = 0;
         finished = false;
-        foreach (var item in GameObject.FindGameObjectsWithTag("Untagged"))
-            if (item.name == "Star") Destroy(item);
-        // Recreate the six original pickups.
-        for (int i = 0; i < 6; i++) {
-            var star = new GameObject("Star");
-            star.transform.position = new Vector3(-2f + i * 3.4f, i % 2 == 0 ? 1.0f : 2.8f, 0);
-            star.transform.localScale = Vector3.one * 0.75f;
-            star.AddComponent<SpriteRenderer>().sprite = MakeSprite(starTexture);
+
+        foreach (Transform pickup in pickups)
+        {
+            if (pickup != null) Destroy(pickup.gameObject);
         }
-        hero.position = spawnPoint;
-        body.linearVelocity = Vector2.zero;
+
+        BuildPickups();
+
+        if (hero != null) hero.position = spawnPoint;
+        if (body != null) body.linearVelocity = Vector2.zero;
     }
 
-    void OnGUI()
+    private void OnGUI()
     {
-        if (hudStyle == null) {
-            hudStyle = new GUIStyle(GUI.skin.label) { fontSize = Mathf.Max(18, Screen.height / 28), fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.12f, 0.2f, 0.3f) } };
-            buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = Mathf.Max(20, Screen.height / 24), fontStyle = FontStyle.Bold };
+        if (hudStyle == null)
+        {
+            hudStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Mathf.Max(18, Screen.height / 28),
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(0.12f, 0.2f, 0.3f) }
+            };
+            buttonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = Mathf.Max(20, Screen.height / 24),
+                fontStyle = FontStyle.Bold
+            };
         }
-        GUI.Label(new Rect(18, 12, 380, 48), "PIXEL HOP   ★ " + stars + "/6", hudStyle);
-        if (finished) GUI.Label(new Rect(Screen.width * 0.35f, 50, Screen.width * 0.4f, 60), "LEVEL CLEAR! ✨", hudStyle);
 
-        float size = Mathf.Clamp(Screen.height * 0.14f, 64, 110);
-        float y = Screen.height - size - 22;
-        touchMoveInput = 0;
-        if (GUI.RepeatButton(new Rect(22, y, size, size), "◀", buttonStyle)) touchMoveInput = -1;
-        if (GUI.RepeatButton(new Rect(30 + size, y, size, size), "▶", buttonStyle)) touchMoveInput = 1;
-        if (GUI.Button(new Rect(Screen.width - size - 24, y, size, size), "JUMP", buttonStyle)) jumpQueued = true;
-        if (GUI.Button(new Rect(Screen.width - 70, 16, 52, 44), "↻", buttonStyle)) Restart();
+        GUI.Label(new Rect(18, 12, 380, 48), "PIXEL HOP   ★ " + stars + "/" + TotalStars, hudStyle);
+        if (finished)
+        {
+            GUI.Label(new Rect(Screen.width * 0.35f, 50, Screen.width * 0.4f, 60),
+                "LEVEL CLEAR! ✨", hudStyle);
+        }
+
+        float size = Mathf.Clamp(Screen.height * 0.14f, 64f, 110f);
+        float y = Screen.height - size - 22f;
+        touchMoveInput = 0f;
+
+        if (GUI.RepeatButton(new Rect(22f, y, size, size), "◀", buttonStyle))
+            touchMoveInput = -1f;
+        if (GUI.RepeatButton(new Rect(30f + size, y, size, size), "▶", buttonStyle))
+            touchMoveInput = 1f;
+        if (GUI.Button(new Rect(Screen.width - size - 24f, y, size, size), "JUMP", buttonStyle))
+            jumpQueued = true;
+        if (GUI.Button(new Rect(Screen.width - 70f, 16f, 52f, 44f), "↻", buttonStyle))
+            Restart();
     }
 }
