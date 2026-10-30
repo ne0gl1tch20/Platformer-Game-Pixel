@@ -137,22 +137,19 @@ namespace KenneyPlatformer.Editor
 
         private static int GetTextureHeight(string assetPath)
         {
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-            if (texture != null) return texture.height;
-
-            // Read dimensions from the imported texture without making it readable.
-            var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
-            if (importer != null)
+            // PNG IHDR stores width and height as big-endian 32-bit values at byte 16.
+            // Reading the header avoids changing platform import settings just to slice an atlas.
+            byte[] header = new byte[24];
+            using (var stream = File.OpenRead(assetPath))
             {
-                var settings = importer.GetDefaultPlatformTextureSettings();
-                settings.maxTextureSize = 4096;
-                importer.SetPlatformTextureSettings(settings);
-                importer.SaveAndReimport();
-                texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                if (texture != null) return texture.height;
+                if (stream.Read(header, 0, header.Length) != header.Length)
+                    throw new InvalidDataException("PNG header is incomplete: " + assetPath);
             }
 
-            throw new InvalidOperationException("Unable to read atlas dimensions for " + assetPath);
+            if (header[0] != 137 || header[1] != 80 || header[2] != 78 || header[3] != 71)
+                throw new InvalidDataException("Atlas image is not a PNG: " + assetPath);
+
+            return (header[20] << 24) | (header[21] << 16) | (header[22] << 8) | header[23];
         }
 
         private static void CreateEnvironmentTiles()
@@ -406,7 +403,11 @@ namespace KenneyPlatformer.Editor
         private static void AddParameter(AnimatorController controller, string name, AnimatorControllerParameterType type)
         {
             if (!controller.parameters.Any(p => p.name == name))
-                controller.AddParameter(name, type);
+            {
+                var parameter = new AnimatorControllerParameter { name = name, type = type };
+                if (name == "Grounded") parameter.defaultBool = true;
+                controller.AddParameter(parameter);
+            }
         }
 
         private static void CreateOrUpdateClip(string clipPath, List<Sprite> sprites, string groupName)
