@@ -185,9 +185,9 @@ public class PrototypeBootstrap : MonoBehaviour
         var hits = Physics2D.OverlapCircleAll(hero.position + Vector3.down * 0.55f, 0.18f);
         bool grounded = false;
         foreach (var hit in hits) if (hit.gameObject != hero.gameObject && hit.GetComponent<BoxCollider2D>() != null) grounded = true;
-        if (jumpQueued && grounded && !finished) body.velocity = new Vector2(body.velocity.x, JumpForce);
+        if (jumpQueued && grounded && !finished) body.linearVelocity = new Vector2(body.linearVelocity.x, JumpForce);
         jumpQueued = false;
-        body.velocity = new Vector2(finished ? 0 : moveInput * MoveSpeed, body.velocity.y);
+        body.linearVelocity = new Vector2(finished ? 0 : moveInput * MoveSpeed, body.linearVelocity.y);
 
         var sprite = hero.GetComponent<SpriteRenderer>();
         if (Mathf.Abs(moveInput) > 0.05f) sprite.flipX = moveInput < 0;
@@ -202,7 +202,7 @@ public class PrototypeBootstrap : MonoBehaviour
 
         if (!finished && hero.position.x > 12.2f && hero.position.y > 0.8f) {
             finished = true;
-            body.velocity = Vector2.zero;
+            body.linearVelocity = Vector2.zero;
         }
         if (hero.position.y < -8f) Restart();
 
@@ -226,7 +226,7 @@ public class PrototypeBootstrap : MonoBehaviour
             star.AddComponent<SpriteRenderer>().sprite = MakeSprite(starTexture);
         }
         hero.position = spawnPoint;
-        body.velocity = Vector2.zero;
+        body.linearVelocity = Vector2.zero;
     }
 
     void OnGUI()
